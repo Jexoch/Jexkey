@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Jexkey.Application/Jexkey.Application.csproj" />
+  <Project Path="Jexkey.Domain/Jexkey.Domain.csproj" Id="b2528772-ae5e-44af-b51d-ba948c773657" />
+  <Project Path="Jexkey.Infrastructure/Jexkey.Infrastructure.csproj" Id="36950c11-7364-4c82-82ae-674751432041" />
+  <Project Path="Jexkey.WebAPI/Jexkey.WebAPI.csproj" Id="9b3a0cb3-1ac4-4562-b8da-61b120b87774" />
+</Solution>

@@ -39,28 +39,37 @@ The server never receives or stores a user's master password, vault plaintext, o
 
 ### Key derivation
 
-From the master password and a per-user salt, the client derives two separate values using PBKDF2:
+From the master password and a per-user salt, the client is expected to derive two separate values using PBKDF2 (this is a client-side contract; the server receives only the final derived hash and cannot enforce client-side PRF iterations):
 
 1. **MasterKey:** used only for encrypting and decrypting vault data with AES-256-GCM. It never leaves the client.
 2. **MasterHash:** used only for authentication against the server. The server verifies it in constant time (`FixedTimeEquals`) after re-hashing with `AuthSalt`.
 
 | Parameter | Value | Specification |
 |-----------|-------|---------------|
-| Pseudo-Random Function (PRF) | HMAC-SHA256 | Cryptographically secure PRF |
-| Iteration Count | 600,000 | In accordance with OWASP Password Storage Guidance |
+| Pseudo-Random Function (PRF) | HMAC-SHA256 | Cryptographically secure PRF (client contract) |
+| Client Iteration Count | 600,000 | In accordance with OWASP Password Storage Guidance |
+| Server Iteration Count | 100,000 | Server-side re-hashing with per-user `AuthSalt` |
 | Salt Length | 16 bytes (128 bits) | Generated via CSPRNG |
 | Output Derived Length | 32 bytes (256 bits) | Standard 256-bit symmetric key length |
 
 ### Registration and login flow
 
-1. The client derives `MasterKey` and `MasterHash` from the master password and salt.
-2. During registration, the client sends `MasterHash` and `MasterSalt` to the API.
-3. The server re-hashes `MasterHash` with an independent per-user `AuthSalt` (PBKDF2-HMAC-SHA256, 100,000 iterations) before storing, preventing pass-the-hash attacks if the database is leaked.
-4. Vault names and item fields are encrypted client-side with `MasterKey` before upload and decrypted client-side after download.
+**Registration Flow:**
+1. The client generates a random 16-byte `MasterSalt`.
+2. The client derives `MasterKey` and `MasterHash` from the master password and `MasterSalt`.
+3. The client sends `MasterHash` and `MasterSalt` to `POST /api/auth/register`.
+4. The server generates a unique 16-byte `AuthSalt`, re-hashes `MasterHash` with it (PBKDF2-HMAC-SHA256, 100,000 iterations), and stores the result, preventing pass-the-hash attacks if the database is leaked.
+
+**Login Flow:**
+1. The client retrieves the user's `MasterSalt` via `GET /api/auth/salt/{identity}`.
+2. The client derives `MasterHash` client-side using the retrieved salt and the user's master password.
+3. The client sends `MasterHash` to `POST /api/auth/login`.
+4. The server re-hashes the incoming hash with the stored `AuthSalt` (or performs a dummy calculation if the user does not exist to mitigate timing side-channels) and verifies it using `FixedTimeEquals`, issuing a JWT on success.
+5. Vault names and item fields are encrypted/decrypted exclusively on the client with `MasterKey`.
 
 ### Known limitations
 
-- **User enumeration:** The `/api/auth/salt/{identity}` endpoint returns a newly generated random salt for non-existent users, leaking user existence across repeated calls. Login also returns immediately when a user is not found, presenting a timing side-channel.
+- **User enumeration via salt:** The `/api/auth/salt/{identity}` endpoint currently returns a newly generated random salt for non-existent users, leaking user existence across repeated calls (deterministic fake salt via HMAC-SHA256 planned in next step). *Note: Login timing side-channel has been neutralized with dummy PBKDF2 execution.*
 - **Payload validation:** DTOs currently lack explicit byte-length boundaries for `MasterHash` and `MasterSalt`.
 - **No client yet:** This repository contains only the API; the client-side crypto flow above must be implemented by a client.
 - **Server metadata exposure:** The server still sees metadata: account existence, timestamps, number and size of items.
@@ -87,7 +96,7 @@ Dependencies point inward: `WebAPI → Infrastructure → Application → Domain
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/api/auth/salt/{identity}` | Retrieve user salt or deterministic fake salt | No |
+| GET | `/api/auth/salt/{identity}` | Retrieve user salt (or random fake salt if non-existent) | No |
 | POST | `/api/auth/register` | Register account with `MasterHash` & `MasterSalt` | No |
 | POST | `/api/auth/login` | Authenticate with `MasterHash`, receive JWT | No |
 | GET | `/api/vaults` | List all vaults belonging to user | Bearer JWT |

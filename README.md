@@ -2,6 +2,7 @@
 
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![C#](https://img.shields.io/badge/C%23-13.0-239120?logo=csharp)](https://learn.microsoft.com/dotnet/csharp/)
+[![Build](https://github.com/Jexoch/Jexkey/actions/workflows/build.yml/badge.svg)](https://github.com/Jexoch/Jexkey/actions/workflows/build.yml)
 [![Architecture](https://img.shields.io/badge/Architecture-Clean%20Architecture-blue)](#project-architecture)
 [![Database](https://img.shields.io/badge/Database-PostgreSQL-336791?logo=postgresql)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -162,7 +163,7 @@ The API listens on `http://localhost:5245` by default.
 ## Roadmap
 
 - [ ] Unit tests for the crypto and ownership-check logic
-- [ ] GitHub Actions build workflow
+- [x] GitHub Actions build workflow
 - [ ] Reference client implementing the client-side crypto flow
 - [ ] Detailed security documentation and threat model
 

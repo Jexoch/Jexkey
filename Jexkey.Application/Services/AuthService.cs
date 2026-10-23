@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 
 namespace Jexkey.Application.Services {
     public class AuthService : IAuthService {
+        private const int ServerPbkdf2Iterations = 100_000;
         private readonly IUserRepository _userRepository;
         private readonly ITokenService _tokenService;
 
@@ -26,14 +27,24 @@ namespace Jexkey.Application.Services {
             try {
                 var user = await _userRepository.GetUserByEmailOrUsernameAsync(dto.Identity);
                 if (user == null) {
+                    // Timing mitigation: perform dummy PBKDF2 calculation so response time is equalized
+                    var dummySalt = new byte[16];
+                    _ = Rfc2898DeriveBytes.Pbkdf2(dto.MasterHash, dummySalt, ServerPbkdf2Iterations, HashAlgorithmName.SHA256, 32);
                     return null;
                 }
 
-                if (CryptographicOperations.FixedTimeEquals(dto.MasterHash, user.MasterHash)) {
-                    return _tokenService.GenerateJwtToken(user);
-                }
+                var computedHash = Rfc2898DeriveBytes.Pbkdf2(
+                    dto.MasterHash, user.AuthSalt, ServerPbkdf2Iterations, HashAlgorithmName.SHA256, 32);
 
-                return null;
+                try {
+                    if (CryptographicOperations.FixedTimeEquals(computedHash, user.MasterHash)) {
+                        return _tokenService.GenerateJwtToken(user);
+                    }
+
+                    return null;
+                } finally {
+                    Array.Clear(computedHash);
+                }
             } finally {
                 Array.Clear(dto.MasterHash);
             }
@@ -45,11 +56,16 @@ namespace Jexkey.Application.Services {
                 return false;
             }
 
+            var authSalt = RandomNumberGenerator.GetBytes(16);
+            var serverHashed = Rfc2898DeriveBytes.Pbkdf2(
+                dto.MasterHash, authSalt, ServerPbkdf2Iterations, HashAlgorithmName.SHA256, 32);
+
             var user = new User {
                 UserName = dto.UserName,
                 UserEmail = dto.UserEmail,
-                MasterHash = (byte[])dto.MasterHash.Clone(),
+                MasterHash = serverHashed,
                 MasterSalt = (byte[])dto.MasterSalt.Clone(),
+                AuthSalt = authSalt
             };
 
             try {

@@ -29,6 +29,9 @@ namespace Jexkey.Infrastructure.Configurations {
             builder.Property(u => u.MasterSalt)
                 .IsRequired();
 
+            builder.Property(u => u.AuthSalt)
+                .IsRequired();
+
             builder.Property(u => u.UserRole)
                 .IsRequired()
                 .HasConversion<int>();

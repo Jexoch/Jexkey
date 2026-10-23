@@ -33,7 +33,7 @@ The server never receives or stores a user's master password, vault plaintext, o
 | Master password | Never | — |
 | Master key (encryption key) | Never | — |
 | Master salt | Yes | 16-byte random salt (provided by client during registration) |
-| Authentication hash (`MasterHash`) | Yes | Stored as received from client (server-side re-hashing planned) |
+| Authentication hash (`MasterHash`) | Yes | Re-hashed server-side with 100k PBKDF2 iterations & per-user `AuthSalt` |
 | Vault names | Yes | Ciphertext |
 | Item title, username, password, notes | Yes | Ciphertext (AES-GCM) |
 
@@ -42,7 +42,7 @@ The server never receives or stores a user's master password, vault plaintext, o
 From the master password and a per-user salt, the client derives two separate values using PBKDF2:
 
 1. **MasterKey:** used only for encrypting and decrypting vault data with AES-256-GCM. It never leaves the client.
-2. **MasterHash:** used only for authentication against the server. The server currently verifies it directly in constant time (`FixedTimeEquals`).
+2. **MasterHash:** used only for authentication against the server. The server verifies it in constant time (`FixedTimeEquals`) after re-hashing with `AuthSalt`.
 
 | Parameter | Value | Specification |
 |-----------|-------|---------------|
@@ -55,12 +55,11 @@ From the master password and a per-user salt, the client derives two separate va
 
 1. The client derives `MasterKey` and `MasterHash` from the master password and salt.
 2. During registration, the client sends `MasterHash` and `MasterSalt` to the API.
-3. The server stores `MasterHash` directly (server-side re-hashing with an additional `AuthSalt` planned) and issues a JWT on successful login.
+3. The server re-hashes `MasterHash` with an independent per-user `AuthSalt` (PBKDF2-HMAC-SHA256, 100,000 iterations) before storing, preventing pass-the-hash attacks if the database is leaked.
 4. Vault names and item fields are encrypted client-side with `MasterKey` before upload and decrypted client-side after download.
 
 ### Known limitations
 
-- **Pass-the-hash risk:** `MasterHash` is currently stored in the database exactly as sent by the client. If the database leaks, an attacker could authenticate with the stolen hash without knowing the user's master password (server-side re-hashing planned in future update).
 - **User enumeration:** The `/api/auth/salt/{identity}` endpoint returns a newly generated random salt for non-existent users, leaking user existence across repeated calls. Login also returns immediately when a user is not found, presenting a timing side-channel.
 - **Payload validation:** DTOs currently lack explicit byte-length boundaries for `MasterHash` and `MasterSalt`.
 - **No client yet:** This repository contains only the API; the client-side crypto flow above must be implemented by a client.

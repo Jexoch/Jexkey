@@ -9,6 +9,7 @@ namespace Jexkey.Domain.Entities {
 
         public byte[] MasterHash { get; set; }
         public byte[] MasterSalt { get; set; }
+        public byte[] AuthSalt { get; set; }
 
         public DateTimeOffset CreatedAt { get; set; }
 

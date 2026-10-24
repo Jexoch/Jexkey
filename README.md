@@ -59,18 +59,17 @@ From the master password and a per-user salt, the client is expected to derive t
 1. The client generates a random 16-byte `MasterSalt`.
 2. The client derives `MasterKey` and `MasterHash` from the master password and `MasterSalt`.
 3. The client sends `MasterHash` and `MasterSalt` to `POST /api/auth/register`.
-4. The server generates a unique 16-byte `AuthSalt`, re-hashes `MasterHash` with it (PBKDF2-HMAC-SHA256, 100,000 iterations), and stores the result, preventing pass-the-hash attacks if the database is leaked.
+4. The server normalizes identities (`Trim().ToLowerInvariant()`), validates payload byte boundaries (32-byte hash, 16-byte salt), generates a unique 16-byte `AuthSalt`, re-hashes `MasterHash` with it (PBKDF2-HMAC-SHA256, 100,000 iterations), and stores the result, preventing pass-the-hash attacks if the database is leaked.
 
 **Login Flow:**
-1. The client retrieves the user's `MasterSalt` via `GET /api/auth/salt/{identity}`.
+1. The client retrieves the user's `MasterSalt` via `GET /api/auth/salt/{identity}` (identities are case-normalized).
 2. The client derives `MasterHash` client-side using the retrieved salt and the user's master password.
 3. The client sends `MasterHash` to `POST /api/auth/login`.
-4. The server re-hashes the incoming hash with the stored `AuthSalt` (or performs a dummy calculation if the user does not exist to mitigate timing side-channels) and verifies it using `FixedTimeEquals`, issuing a JWT on success.
+4. The server validates payload byte boundaries (32 bytes fail-fast), re-hashes the incoming hash with the stored `AuthSalt` (or performs a deterministic dummy calculation if the user does not exist to mitigate timing side-channels) and verifies it using `FixedTimeEquals`, issuing a JWT on success.
 5. Vault names and item fields are encrypted/decrypted exclusively on the client with `MasterKey`.
 
 ### Known limitations
 
-- **Payload validation:** DTOs currently lack explicit byte-length boundaries for `MasterHash` and `MasterSalt`.
 - **No rate limiting (DoS risk):** Authentication endpoints (`/salt`, `/login`, `/register`) currently do not enforce rate limits. Because login runs 100k PBKDF2 iterations even on dummy attempts to equalize timing, repeated requests could lead to CPU exhaustion.
 - **Stateless token revocation & password rotation:** In this MVP, issued JWT tokens cannot be revoked before expiration, and there is no master password change / vault re-encryption flow yet.
 - **No client yet:** This repository contains only the API; the client-side crypto flow above must be implemented by a client.
@@ -166,7 +165,7 @@ The API listens on `http://localhost:5245` by default (development only; HTTPS a
 ## Roadmap
 
 - [x] Return a deterministic fake salt for unknown users (HMAC of identity with a server secret)
-- [ ] Validate `MasterHash` / `MasterSalt` lengths in DTOs
+- [x] Validate `MasterHash` / `MasterSalt` payload lengths and identity normalization
 - [ ] Add rate limiting on auth endpoints
 - [ ] Enforce unique database constraints and username validation
 - [ ] Unit tests for the crypto and ownership-check logic

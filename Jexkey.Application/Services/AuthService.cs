@@ -17,31 +17,39 @@ namespace Jexkey.Application.Services {
             _tokenService = tokenService;
             _userRepository = userRepository;
 
-            var pepper = configuration["Security:FakeSaltPepper"]
-                ?? throw new InvalidOperationException("Security:FakeSaltPepper configuration is missing!");
+            var pepper = configuration["Security:FakeSaltPepper"];
+
+            if (string.IsNullOrWhiteSpace(pepper) || pepper.StartsWith("YOUR_")) {
+                throw new InvalidOperationException("Security:FakeSaltPepper configuration is missing or invalid!");
+            }
+
             _fakeSaltPepperBytes = Encoding.UTF8.GetBytes(pepper);
         }
 
         public async Task<byte[]?> GetMasterSaltAsync(string identity) {
-            var user = await _userRepository.GetUserByEmailOrUsernameAsync(identity);
+            var normalizedIdentity = NormalizeIdentity(identity);
+            var user = await _userRepository.GetUserByEmailOrUsernameAsync(normalizedIdentity);
             if (user == null) {
-                return GenerateDeterministicFakeSalt(identity);
+                return GenerateDeterministicFakeSalt(normalizedIdentity);
             }
             return user.MasterSalt;
         }
 
         public async Task<string?> LoginAsync(LoginDto dto) {
             try {
-                var user = await _userRepository.GetUserByEmailOrUsernameAsync(dto.Identity);
+                if (dto.MasterHash == null || dto.MasterHash.Length != 32) {
+                    throw new InvalidOperationException("MasterHash length is invalid. It must be exactly 32 bytes.");
+                }
+
+                var normalizedIdentity = NormalizeIdentity(dto.Identity);
+                var user = await _userRepository.GetUserByEmailOrUsernameAsync(normalizedIdentity);
                 if (user == null) {
-                    // Timing mitigation: perform dummy PBKDF2 calculation so response time is equalized
-                    var dummySalt = GenerateDeterministicFakeSalt(dto.Identity);
+                    var dummySalt = GenerateDeterministicFakeSalt(normalizedIdentity);
                     _ = Rfc2898DeriveBytes.Pbkdf2(dto.MasterHash, dummySalt, ServerPbkdf2Iterations, HashAlgorithmName.SHA256, 32);
                     return null;
                 }
 
-                var computedHash = Rfc2898DeriveBytes.Pbkdf2(
-                    dto.MasterHash, user.AuthSalt, ServerPbkdf2Iterations, HashAlgorithmName.SHA256, 32);
+                var computedHash = Rfc2898DeriveBytes.Pbkdf2(dto.MasterHash, user.AuthSalt, ServerPbkdf2Iterations, HashAlgorithmName.SHA256, 32);
 
                 try {
                     if (CryptographicOperations.FixedTimeEquals(computedHash, user.MasterHash)) {
@@ -53,13 +61,26 @@ namespace Jexkey.Application.Services {
                     Array.Clear(computedHash);
                 }
             } finally {
-                Array.Clear(dto.MasterHash);
+                if (dto.MasterHash != null) {
+                    Array.Clear(dto.MasterHash);
+                }
             }
         }
 
         public async Task<bool> RegisterAsync(RegisterDto dto) {
-            if (await _userRepository.ExistsByEmailOrUsernameAsync(dto.UserEmail) ||
-                await _userRepository.ExistsByEmailOrUsernameAsync(dto.UserName)) {
+            if (!CheckEmailFormat(dto.UserEmail)) {
+                throw new InvalidOperationException("Invalid email format");
+            }
+
+            if (dto.MasterHash == null || dto.MasterHash.Length != 32 || dto.MasterSalt == null || dto.MasterSalt.Length != 16) {
+                throw new InvalidOperationException("MasterHash must be 32 bytes and MasterSalt must be 16 bytes.");
+            }
+
+            var normalizedEmail = NormalizeIdentity(dto.UserEmail);
+            var normalizedUserName = NormalizeIdentity(dto.UserName);
+
+            if (await _userRepository.ExistsByEmailOrUsernameAsync(normalizedEmail) ||
+                await _userRepository.ExistsByEmailOrUsernameAsync(normalizedUserName)) {
                 return false;
             }
 
@@ -68,21 +89,24 @@ namespace Jexkey.Application.Services {
                 dto.MasterHash, authSalt, ServerPbkdf2Iterations, HashAlgorithmName.SHA256, 32);
 
             var user = new User {
-                UserName = dto.UserName,
-                UserEmail = dto.UserEmail,
+                UserName = normalizedUserName,
+                UserEmail = normalizedEmail,
                 MasterHash = serverHashed,
                 MasterSalt = (byte[])dto.MasterSalt.Clone(),
                 AuthSalt = authSalt
             };
-
             try {
                 await _userRepository.InsertAsync(user);
                 return true;
             } catch (Exception ex) {
                 Console.WriteLine(ex.Message);
             } finally {
-                Array.Clear(dto.MasterHash);
-                Array.Clear(dto.MasterSalt);
+                if (dto.MasterHash != null) {
+                    Array.Clear(dto.MasterHash);
+                }
+                if (dto.MasterSalt != null) {
+                    Array.Clear(dto.MasterSalt);
+                }
             }
 
             return false;
@@ -92,6 +116,20 @@ namespace Jexkey.Application.Services {
             byte[] identityBytes = Encoding.UTF8.GetBytes(identity);
             byte[] hash = HMACSHA256.HashData(_fakeSaltPepperBytes, identityBytes);
             return hash[..16];
+        }
+
+        private static bool CheckEmailFormat(string? email) {
+            if (string.IsNullOrWhiteSpace(email)) {
+                return false;
+            }
+            if (!email.Contains('@') || !email.Contains('.')) {
+                return false;
+            }
+            return true;
+        }
+
+        private static string NormalizeIdentity(string input) {
+            return input.Trim().ToLowerInvariant();
         }
     }
 }

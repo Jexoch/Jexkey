@@ -5,7 +5,7 @@
 [![Build](https://github.com/Jexoch/Jexkey/actions/workflows/build.yml/badge.svg)](https://github.com/Jexoch/Jexkey/actions/workflows/build.yml)
 [![Architecture](https://img.shields.io/badge/Architecture-Clean%20Architecture-blue)](#project-architecture)
 [![Database](https://img.shields.io/badge/Database-PostgreSQL-336791?logo=postgresql)](https://www.postgresql.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
 **Jexkey** is a password manager Web API built around a **Zero-Knowledge** security model.
 
@@ -177,4 +177,4 @@ The API listens on `http://localhost:5245` by default (development only; HTTPS a
 
 ## License
 
-Licensed under the [MIT License](LICENSE).
+Licensed under the [GNU Affero General Public License v3.0](LICENSE).

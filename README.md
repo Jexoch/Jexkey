@@ -70,7 +70,6 @@ From the master password and a per-user salt, the client is expected to derive t
 
 ### Known limitations
 
-- **User enumeration via salt:** The `/api/auth/salt/{identity}` endpoint currently returns a newly generated random salt for non-existent users, leaking user existence across repeated calls (deterministic fake salt via HMAC-SHA256 planned in next step). *Note: Login timing side-channel has been neutralized with dummy PBKDF2 execution.*
 - **Payload validation:** DTOs currently lack explicit byte-length boundaries for `MasterHash` and `MasterSalt`.
 - **No rate limiting (DoS risk):** Authentication endpoints (`/salt`, `/login`, `/register`) currently do not enforce rate limits. Because login runs 100k PBKDF2 iterations even on dummy attempts to equalize timing, repeated requests could lead to CPU exhaustion.
 - **Stateless token revocation & password rotation:** In this MVP, issued JWT tokens cannot be revoked before expiration, and there is no master password change / vault re-encryption flow yet.
@@ -99,7 +98,7 @@ Dependencies point inward: `WebAPI → Infrastructure → Application → Domain
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/api/auth/salt/{identity}` | Retrieve user salt (or random fake salt if non-existent) | No |
+| GET | `/api/auth/salt/{identity}` | Retrieve user salt (or deterministic fake salt if non-existent) | No |
 | POST | `/api/auth/register` | Register account with `MasterHash` & `MasterSalt` | No |
 | POST | `/api/auth/login` | Authenticate with `MasterHash`, receive JWT | No |
 | GET | `/api/vaults` | List all vaults belonging to user | Bearer JWT |
@@ -139,6 +138,7 @@ dotnet user-secrets set "ConnectionStrings:PGConn" "Server=127.0.0.1;Port=5432;D
 dotnet user-secrets set "Jwt:Key" "YOUR_SUPER_SECRET_KEY_AT_LEAST_32_CHARACTERS_LONG!"
 dotnet user-secrets set "Jwt:Issuer" "JexkeyAPI"
 dotnet user-secrets set "Jwt:Audience" "JexkeyClient"
+dotnet user-secrets set "Security:FakeSaltPepper" "YOUR_SERVER_PEPPER_AT_LEAST_32_CHARACTERS_LONG!"
 ```
 
 Alternatively, use environment variables:
@@ -148,6 +148,7 @@ export ConnectionStrings__PGConn="Server=127.0.0.1;Port=5432;Database=JexkeyDB;U
 export Jwt__Key="YOUR_SUPER_SECRET_KEY_AT_LEAST_32_CHARACTERS_LONG!"
 export Jwt__Issuer="JexkeyAPI"
 export Jwt__Audience="JexkeyClient"
+export Security__FakeSaltPepper="YOUR_SERVER_PEPPER_AT_LEAST_32_CHARACTERS_LONG!"
 ```
 
 ### 3. Apply migrations and run

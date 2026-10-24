@@ -164,7 +164,7 @@ The API listens on `http://localhost:5245` by default (development only; HTTPS a
 
 ## Roadmap
 
-- [ ] Return a deterministic fake salt for unknown users (HMAC of identity with a server secret)
+- [x] Return a deterministic fake salt for unknown users (HMAC of identity with a server secret)
 - [ ] Validate `MasterHash` / `MasterSalt` lengths in DTOs
 - [ ] Add rate limiting on auth endpoints
 - [ ] Enforce unique database constraints and username validation
